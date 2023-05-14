@@ -99,6 +99,8 @@ Intersection left is the x-coordinate of left side of intersection and same for 
 python track.py --yolo-weights yolov8n.pt --save-vid --show-vid --source=PATH_TO_INPUT_VIDEO --intersection-left=200 --intersection-right=900
 ```
 
+Video will be saved to ```runs/track/exp{#}```
+
 ## Tracking
 
 ```bash
