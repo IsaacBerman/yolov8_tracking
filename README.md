@@ -92,7 +92,6 @@ The trackers provided in this repo can be used with other object detectors than 
 </details>
 
 ## Tracking Cars Vs Bikes
-I have added some functionality to limit tracking to cars vs bikes and just count the results at an intersection.
 You may have to edit intersection-left and intersection-right through trial and error for your video.
 Intersection left is the x-coordinate of left side of intersection and same for right but with right side of intersection
 
