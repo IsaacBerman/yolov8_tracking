@@ -90,9 +90,11 @@ The trackers provided in this repo can be used with other object detectors than 
 ```
 
 </details>
+
 ## Tracking Cars Vs Bikes
 You may have to edit intersection-left and intersection-right through trial and error for your video.
 Intersection left is the x-coordinate of left side of intersection and same for right but with right side of intersection
+
 ```bash
 python track.py --yolo-weights yolov8n.pt --save-vid --show-vid --source=PATH_TO_INPUT_VIDEO --intersection-left=200 --intersection-right=900
 ```
