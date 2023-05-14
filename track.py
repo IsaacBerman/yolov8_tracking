@@ -17,7 +17,7 @@ import torch.backends.cudnn as cudnn
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # yolov5 strongsort root directory
-WEIGHTS = ROOT / 'weights'
+WEIGHTS = ROOT
 
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
@@ -77,6 +77,8 @@ def run(
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
         retina_masks=False,
+        intersection_left=200,
+        intersection_right=900
 ):
 
     source = str(source)
@@ -144,6 +146,11 @@ def run(
     #model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile(), Profile())
     curr_frames, prev_frames = [None] * bs, [None] * bs
+    bikes = 0
+    cars = 0
+    counted = []
+    left = []
+    right = []
     for frame_idx, batch in enumerate(dataset):
         path, im, im0s, vid_cap, s = batch
         visualize = increment_path(save_dir / Path(path[0]).stem, mkdir=True) if visualize else False
@@ -254,24 +261,54 @@ def run(
                         if save_vid or save_crop or show_vid:  # Add bbox/seg to image
                             c = int(cls)  # integer class
                             id = int(id)  # integer id
-                            label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
-                                (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
-                            color = colors(c, True)
-                            annotator.box_label(bbox, label, color=color)
-                            
-                            if save_trajectories and tracking_method == 'strongsort':
-                                q = output[7]
-                                tracker_list[i].trajectory(im0, q, color=color)
-                            if save_crop:
-                                txt_file_name = txt_file_name if (isinstance(path, list) and len(path) > 1) else ''
-                                save_one_box(np.array(bbox, dtype=np.int16), imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
+                            if(names[c] == "bicycle" or names[c] == "car"):
+                                label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
+                                    (f'{id} {conf:.3f}' if hide_class else f'{id} {names[c]}'))
+                                color = colors(c, True)
+                                annotator.box_label(bbox, label, color=color)
+                                max_x = bbox[2]
+                                min_x = bbox[0]
+                                if(id is not None and id not in counted):
+                                    print(right)
+                                    print(min_x)
+                                    print(f"id: {id}, right: {right}, min_x: {min_x}, max_x: {max_x}")
+                                    if(id not in left and min_x < intersection_left and max_x > intersection_left):
+                                        left.append(id)
+                                    if(id not in right and min_x < intersection_right and max_x > intersection_right):
+                                        right.append(id)
+                                    if(id in left and ((min_x < intersection_left and max_x < intersection_left) or (min_x > intersection_left and max_x > intersection_left))):
+                                        counted.append(id)
+                                        left.remove(id)
+                                        if names[c] == "bicycle":
+                                            bikes += 1
+                                        if names[c] == "car":
+                                            cars += 1
+                                    if(id in right and ((min_x < intersection_right and max_x < intersection_right) or (min_x > intersection_right and max_x > intersection_right))):
+                                        counted.append(id)
+                                        right.remove(id)
+                                        if names[c] == "bicycle":
+                                            bikes += 1
+                                        if names[c] == "car":
+                                            cars += 1
+                                    
+                                    
+                                if save_trajectories and tracking_method == 'strongsort':
+                                    q = output[7]
+                                    tracker_list[i].trajectory(im0, q, color=color)
+                                if save_crop:
+                                    txt_file_name = txt_file_name if (isinstance(path, list) and len(path) > 1) else ''
+                                    save_one_box(np.array(bbox, dtype=np.int16), imc, file=save_dir / 'crops' / txt_file_name / names[c] / f'{id}' / f'{p.stem}.jpg', BGR=True)
                             
             else:
                 pass
                 #tracker_list[i].tracker.pred_n_update_all_tracks()
-                
+            print(bikes)    
             # Stream results
-            im0 = annotator.result()
+            im0 = annotator.result() 
+            # Return annotated image as array
+            cv2.putText(im0, f'Bikes: {bikes}, Cars: {cars}', (50, 300), 0, 2, (0, 0, 255), 2, cv2.LINE_AA)
+            cv2.line(im0, (intersection_left, 0), (intersection_left, 2000), (250, 250, 250), 2)
+            cv2.line(im0, (intersection_right, 0), (intersection_right, 2000), (250, 250, 250), 2)
             if show_vid:
                 if platform.system() == 'Linux' and p not in windows:
                     windows.append(p)
@@ -315,12 +352,12 @@ def run(
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--yolo-weights', nargs='+', type=Path, default=WEIGHTS / 'yolov8s-seg.pt', help='model.pt path(s)')
-    parser.add_argument('--reid-weights', type=Path, default=WEIGHTS / 'lmbn_n_cuhk03_d.pt')
+    parser.add_argument('--reid-weights', type=Path, default=WEIGHTS / 'osnet_x0_25_msmt17.pt')
     parser.add_argument('--tracking-method', type=str, default='deepocsort', help='deepocsort, botsort, strongsort, ocsort, bytetrack')
     parser.add_argument('--tracking-config', type=Path, default=None)
     parser.add_argument('--source', type=str, default='0', help='file/dir/URL/glob, 0 for webcam')  
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
-    parser.add_argument('--conf-thres', type=float, default=0.5, help='confidence threshold')
+    parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='NMS IoU threshold')
     parser.add_argument('--max-det', type=int, default=1000, help='maximum detections per image')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
@@ -348,6 +385,8 @@ def parse_opt():
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
     parser.add_argument('--vid-stride', type=int, default=1, help='video frame-rate stride')
     parser.add_argument('--retina-masks', action='store_true', help='whether to plot masks in native resolution')
+    parser.add_argument('--intersection-left', type=int, default=200, help='x value of left side of int')
+    parser.add_argument('--intersection-right', type=int, default=900, help='x value of right side of int')
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     opt.tracking_config = ROOT / 'trackers' / opt.tracking_method / 'configs' / (opt.tracking_method + '.yaml')
